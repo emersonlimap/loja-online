@@ -1,0 +1,72 @@
+services:
+  # Banco de dados PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: loja-online-db
+    environment:
+      POSTGRES_DB: loja_online
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/pgdata
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - loja-online-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d loja_online"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Aplicação Loja Online
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: loja-online-app
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/loja_online?sslmode=disable
+      JWT_SECRET: loja_online_jwt_secret_key_production_2024
+      ENVIRONMENT: production
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - loja-online-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep main || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - app_logs:/app/logs
+
+  # Adminer para gerenciamento do banco (opcional)
+  adminer:
+    image: adminer:latest
+    container_name: loja-online-adminer
+    ports:
+      - "8081:8080"
+    networks:
+      - loja-online-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+    driver: local
+  app_logs:
+    driver: local
+
+networks:
+  loja-online-network:
+    driver: bridge
